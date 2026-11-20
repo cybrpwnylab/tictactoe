@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tic-Tac-Toe</title>
+<style>
+  :root { --x: #d9480f; --o: #1c7ed6; --ink: #2b2b2b; --bg: #f4efe6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+         font-family: system-ui, sans-serif; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; gap: 16px; user-select: none; }
+  #status { font-size: 1.4rem; font-weight: 600; min-height: 2rem; }
+  #game { display: flex; align-items: center; gap: 40px; }
+  #board { display: grid; grid-template-columns: repeat(3, 110px); grid-template-rows: repeat(3, 110px); gap: 6px;
+           background: var(--ink); padding: 6px; border-radius: 8px; }
+  .cell { background: #fffdf8; display: flex; align-items: center; justify-content: center;
+          font-size: 4.5rem; font-weight: 700; }
+  .cell.hover { background: #ffe9a8; }
+  .cell.win { background: #b2f2bb; }
+  .X { color: var(--x); } .O { color: var(--o); }
+  .pile { width: 130px; height: 200px; border: 3px dashed #aaa; border-radius: 12px; position: relative;
+          opacity: .45; transition: opacity .2s, border-color .2s; }
+  .pile.active { opacity: 1; border-color: var(--ink); }
+  .pile .label { position: absolute; bottom: 6px; width: 100%; text-align: center; font-size: .85rem; color: #666; }
+  .piece { position: absolute; font-size: 3.2rem; font-weight: 700; width: 64px; height: 64px;
+           display: flex; align-items: center; justify-content: center; touch-action: none; cursor: default; }
+  .pile.active .piece:last-of-type { cursor: grab; }
+  .piece.dragging { position: fixed; z-index: 10; cursor: grabbing; pointer-events: none; font-size: 4.5rem;
+                    width: 110px; height: 110px; }
+  button { font-size: 1rem; padding: 8px 18px; border-radius: 6px; border: 2px solid var(--ink);
+           background: white; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="status"></div>
+<div id="game">
+  <div class="pile" id="pile-X"><div class="label"></div></div>
+  <div id="board"></div>
+  <div class="pile" id="pile-O"><div class="label"></div></div>
+</div>
+<button id="reset">New game</button>
+
+<script>
+const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+const PIECES = { X: 5, O: 4 };           // a full game uses 9 marks; X goes first
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+let board, turn, over, left, cells = [];
+
+for (let i = 0; i < 9; i++) {
+  const c = document.createElement('div');
+  c.className = 'cell'; c.dataset.i = i;
+  boardEl.appendChild(c); cells.push(c);
+}
+
+function newGame() {
+  board = Array(9).fill(null); turn = 'X'; over = false; left = { ...PIECES };
+  cells.forEach(c => { c.textContent = ''; c.className = 'cell'; });
+  renderPiles(); updateStatus();
+}
+
+function renderPiles() {
+  for (const p of ['X', 'O']) {
+    const pile = document.getElementById('pile-' + p);
+    pile.querySelectorAll('.piece').forEach(e => e.remove());
+    for (let k = 0; k < left[p]; k++) {
+      const el = document.createElement('div');
+      el.className = 'piece ' + p; el.textContent = p;
+      // slightly scattered pile
+      el.style.left = (30 + ((k * 37) % 40) - 20) + 'px';
+      el.style.top = (20 + ((k * 23) % 60)) + 'px';
+      el.style.transform = `rotate(${(k * 41) % 50 - 25}deg)`;
+      pile.insertBefore(el, pile.querySelector('.label'));
+    }
+    pile.querySelector('.label').textContent = left[p] + ' left';
+    pile.classList.toggle('active', !over && turn === p);
+  }
+}
+
+function updateStatus(msg) {
+  statusEl.textContent = msg || `Player ${turn}'s turn — drag an ${turn} to the grid`;
+  statusEl.className = over ? '' : turn;
+}
+
+function winnerLine() {
+  return LINES.find(([a,b,c]) => board[a] && board[a] === board[b] && board[a] === board[c]);
+}
+
+function place(i) {
+  board[i] = turn; left[turn]--;
+  cells[i].textContent = turn; cells[i].classList.add(turn);
+  const line = winnerLine();
+  if (line) {
+    over = true; line.forEach(k => cells[k].classList.add('win'));
+    renderPiles(); updateStatus(`Player ${turn} wins! 🎉`); statusEl.className = turn;
+  } else if (board.every(Boolean)) {
+    over = true; renderPiles(); updateStatus("It's a draw."); statusEl.className = '';
+  } else {
+    turn = turn === 'X' ? 'O' : 'X'; renderPiles(); updateStatus();
+  }
+}
+
+function cellAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  return el && el.classList.contains('cell') ? el : null;
+}
+
+// Drag: pick up the top piece of the active player's pile
+document.addEventListener('pointerdown', e => {
+  const piece = e.target.closest('.piece');
+  if (!piece || over) return;
+  const pile = piece.parentElement;
+  if (!pile.classList.contains('active') || piece !== [...pile.querySelectorAll('.piece')].pop()) return;
+
+  const ghost = piece.cloneNode(true);
+  ghost.classList.add('dragging');
+  ghost.style.transform = '';
+  document.body.appendChild(ghost);
+  piece.style.visibility = 'hidden';
+  let hover = null;
+
+  const move = ev => {
+    ghost.style.left = (ev.clientX - 55) + 'px';
+    ghost.style.top = (ev.clientY - 55) + 'px';
+    const c = cellAt(ev.clientX, ev.clientY);
+    const ok = c && !board[c.dataset.i] ? c : null;
+    if (hover !== ok) { hover && hover.classList.remove('hover'); ok && ok.classList.add('hover'); hover = ok; }
+  };
+  const up = ev => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    hover && hover.classList.remove('hover');
+    ghost.remove();
+    const c = ev.type === 'pointerup' ? cellAt(ev.clientX, ev.clientY) : null;
+    if (c && !board[c.dataset.i]) place(+c.dataset.i);
+    else piece.style.visibility = '';
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+  move(e);
+});
+
+document.getElementById('reset').onclick = newGame;
+newGame();
+</script>
+</body>
+</html>
